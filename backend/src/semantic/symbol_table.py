@@ -2,7 +2,6 @@ from enum import Enum
 from typing import Optional, Dict, Any
 from ..parser.ast_nodes import DataType
 
-
 class SymbolType(Enum):
     VARIABLE = "variable"
     FUNCTION = "function"

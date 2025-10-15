@@ -31,6 +31,49 @@ class SemanticAnalyzer:
                         if isinstance(item, Node):
                             item.accept(self)
 
+    def visit_import(self, node: Import):
+        """Анализ импорта"""
+        pass
+
+    def visit_literal(self, node: Literal):
+        """Анализ литерала"""
+        pass
+
+    def visit_unary_operation(self, node: UnaryOperation):
+        """Анализ унарной операции"""
+        node.operand.accept(self)
+
+    def visit_expression_statement(self, node: ExpressionStatement):
+        """Анализ выражения как оператора"""
+        node.expression.accept(self)
+
+    # Добавьте метод для FunctionDeclaration без return_type
+    def visit_function_declaration(self, node: FunctionDeclaration):
+        """Анализ объявления функции"""
+        # Объявляем функцию в текущей области видимости
+        if not self.symbol_table.declare(node.name, SymbolType.FUNCTION, DataType.ANY,
+                                         line=node.line, column=node.column):
+            self.errors.append(RedeclarationError(node.name, node.line, node.column))
+            return
+
+        # Входим в новую область видимости функции
+        self.symbol_table.enter_scope()
+        old_return_type = self.current_function_return_type
+        self.current_function_return_type = DataType.ANY  # По умолчанию
+
+        # Объявляем параметры
+        for param in node.parameters:
+            if not self.symbol_table.declare(param.name, SymbolType.PARAMETER, DataType.ANY,
+                                             line=param.line, column=param.column):
+                self.errors.append(RedeclarationError(param.name, param.line, param.column))
+
+        # Анализируем тело функции
+        node.body.accept(self)
+
+        # Выходим из области видимости функции
+        self.symbol_table.exit_scope()
+        self.current_function_return_type = old_return_type
+
     def visit_program(self, node: Program):
         """Анализ программы"""
         for statement in node.statements:
@@ -82,21 +125,25 @@ class SemanticAnalyzer:
 
     def visit_assignment(self, node: Assignment):
         """Анализ присваивания"""
-        # Проверяем, что переменная объявлена
-        symbol = self.symbol_table.lookup(node.target.name)
-        if not symbol:
-            self.errors.append(UndefinedVariableError(node.target.name, node.line, node.column))
-            return
-
-        # Анализируем значение
+        # Сначала анализируем значение (может содержать другие переменные)
         node.value.accept(self)
 
-        # Проверяем совместимость типов
-        value_type = self._get_expression_type(node.value)
-        if not self._are_types_compatible(symbol.data_type, value_type):
-            self.errors.append(TypeMismatchError(
-                symbol.data_type.value, value_type.value, node.line, node.column
-            ))
+        # Проверяем, что переменная объявлена
+        symbol = self.symbol_table.lookup(node.target.name)
+
+        if not symbol:
+            # Если переменная не объявлена - объявляем ее с типом ANY
+            # Определяем тип значения
+            value_type = self._get_expression_type(node.value)
+            self.symbol_table.declare(node.target.name, SymbolType.VARIABLE, value_type,
+                                      line=node.target.line, column=node.target.column)
+        else:
+            # Если переменная уже объявлена, проверяем совместимость типов
+            value_type = self._get_expression_type(node.value)
+            if not self._are_types_compatible(symbol.data_type, value_type):
+                self.errors.append(TypeMismatchError(
+                    symbol.data_type.value, value_type.value, node.line, node.column
+                ))
 
     def visit_binary_operation(self, node: BinaryOperation):
         """Анализ бинарной операции"""
@@ -216,13 +263,19 @@ class SemanticAnalyzer:
             right_type = self._get_expression_type(node.right)
 
             # Для арифметических операций определяем результирующий тип
-            if node.operator in ['+', '-', '*', '/']:
+            if node.operator in ['+', '-', '*', '/', '%']:
                 if left_type == DataType.STRING or right_type == DataType.STRING:
-                    return DataType.STRING
+                    # Если хотя бы один операнд - строка, результат - строка (только для +)
+                    if node.operator == '+':
+                        return DataType.STRING
+                    else:
+                        return DataType.ANY  # Другие операции со строками недопустимы
                 elif left_type == DataType.FLOAT or right_type == DataType.FLOAT:
                     return DataType.FLOAT
-                else:
+                elif left_type == DataType.INT and right_type == DataType.INT:
                     return DataType.INT
+                else:
+                    return DataType.ANY
             elif node.operator in ['==', '!=', '>', '<', '>=', '<=', 'and', 'or']:
                 return DataType.BOOLEAN
 
@@ -242,13 +295,20 @@ class SemanticAnalyzer:
     def _are_operands_compatible(self, operator: str, left_type: DataType, right_type: DataType) -> bool:
         """Проверяет совместимость операндов для операции"""
         if operator in ['+', '-', '*', '/', '%']:
-            # Арифметические операции
-            return self._are_types_compatible(left_type, right_type) and \
-                left_type in [DataType.INT, DataType.FLOAT, DataType.STRING] and \
-                right_type in [DataType.INT, DataType.FLOAT, DataType.STRING]
+            # Арифметические операции - разрешаем числовые типы и строки для сложения
+            if operator == '+':
+                # Сложение разрешено для чисел и строк
+                numeric_and_string = [DataType.INT, DataType.FLOAT, DataType.STRING]
+                return (left_type in numeric_and_string and right_type in numeric_and_string and
+                        self._are_types_compatible(left_type, right_type))
+            else:
+                # Другие арифметические операции только для чисел
+                numeric_types = [DataType.INT, DataType.FLOAT]
+                return (left_type in numeric_types and right_type in numeric_types and
+                        self._are_types_compatible(left_type, right_type))
 
         elif operator in ['==', '!=', '>', '<', '>=', '<=']:
-            # Операции сравнения
+            # Операции сравнения - разрешаем сравнение совместимых типов
             return self._are_types_compatible(left_type, right_type)
 
         elif operator in ['and', 'or']:
