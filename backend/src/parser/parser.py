@@ -119,7 +119,8 @@ class Parser:
 
         body = self.parse_block()
 
-        return FunctionDeclaration(name.value, parameters, body, line=token.line, column=token.column)
+        # Убедиться, что используется DataType.ANY по умолчанию
+        return FunctionDeclaration(name.value, parameters, body, DataType.ANY, token.line, token.column)
 
     def parse_parameter_list(self) -> List[Identifier]:
         """Разбор списка параметров"""

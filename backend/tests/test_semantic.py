@@ -39,16 +39,15 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_valid_program(self):
         """Тест корректной программы"""
         print("=== Тест: корректная программа ===")
-        # Используем однострочные тесты вместо многострочных
         codes = [
             "x = 5",
             "def test(): return 5",
-            "x = 5; y = x + 1"  # несколько операторов в одной строке
+            "x = 5\ny = x + 1"
         ]
 
         all_passed = True
         for code in codes:
-            self.analyzer = SemanticAnalyzer()  # сбрасываем анализатор
+            self.analyzer = SemanticAnalyzer()
             result, errors = self._analyze_code(code)
             if not result:
                 print(f"✗ Ошибка в: {code}")
@@ -63,13 +62,11 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_type_compatibility(self):
         """Тест проверки совместимости типов"""
         print("=== Тест: совместимость типов ===")
-        # Однострочный тест
         code = "x = 5 + 'hello'"  # Сложение числа и строки
         result, errors = self._analyze_code(code)
 
         self.assertFalse(result)
         self.assertGreater(len(errors), 0)
-        # Проверяем, что есть хотя бы одна ошибка несовместимости типов
         type_errors = [e for e in errors if isinstance(e, TypeMismatchError)]
         self.assertGreater(len(type_errors), 0)
         print(f"✓ Ошибка типов обнаружена: {type_errors[0]}")
@@ -78,11 +75,9 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_variable_redeclaration(self):
         """Тест повторного объявления переменной"""
         print("=== Тест: повторное объявление переменной ===")
-        # Однострочный тест с точкой с запятой
-        code = "x = 5; x = 'hello'"  # Переопределение в одной области видимости
+        code = "x = 5\nx = 'hello'"  # Переопределение в одной области видимости
         result, errors = self._analyze_code(code)
 
-        # Это должно пройти, так как мы разрешаем переприсваивание
         self.assertTrue(result)
         self.assertEqual(len(errors), 0)
         print("✓ Переприсваивание переменной обработано корректно")
@@ -91,7 +86,6 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_function_declaration(self):
         """Тест объявления функции"""
         print("=== Тест: объявление функции ===")
-        # Упрощенный тест с одной функцией
         code = "def add(a, b): return a + b"
         result, errors = self._analyze_code(code)
 
@@ -102,9 +96,8 @@ class TestSemanticAnalyzer(unittest.TestCase):
 
     def test_function_redeclaration(self):
         """Тест повторного объявления функции"""
-        print("=== Тест: повторное объявление функции ===")
-        # Несколько функций в одной строке через точку с запятой
-        code = "def test(): return 1; def test(): return 2"
+        print("=== Тест: повторное объявления функции ===")
+        code = "def test(): return 1\ndef test(): return 2"
         result, errors = self._analyze_code(code)
 
         self.assertFalse(result)
@@ -116,7 +109,6 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_parameter_scope(self):
         """Тест области видимости параметров функции"""
         print("=== Тест: область видимости параметров ===")
-        # Однострочная функция
         code = "def process_data(data): return data * 2"
         result, errors = self._analyze_code(code)
 
@@ -128,14 +120,9 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_if_statement_semantic(self):
         """Тест семантики условного оператора"""
         print("=== Тест: семантика условного оператора ===")
-        # Однострочный if
-        code = "if x > 5: result = 'greater'"
-        # Сначала объявим x
-        self.analyzer = SemanticAnalyzer()
-        result, errors = self._analyze_code("x = 10")
-        self.assertTrue(result)
-
+        code = "x = 10\nif x > 5: result = 'greater'"
         result, errors = self._analyze_code(code)
+
         self.assertTrue(result)
         self.assertEqual(len(errors), 0)
         print("✓ Условный оператор проанализирован корректно")
@@ -144,14 +131,9 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_while_loop_semantic(self):
         """Тест семантики цикла while"""
         print("=== Тест: семантика цикла while ===")
-        # Однострочный while
-        code = "while counter < 5: counter = counter + 1"
-        # Сначала объявим counter
-        self.analyzer = SemanticAnalyzer()
-        result, errors = self._analyze_code("counter = 0")
-        self.assertTrue(result)
-
+        code = "counter = 0\nwhile counter < 5: counter = counter + 1"
         result, errors = self._analyze_code(code)
+
         self.assertTrue(result)
         self.assertEqual(len(errors), 0)
         print("✓ Цикл while проанализирован корректно")
@@ -160,21 +142,51 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_for_loop_semantic(self):
         """Тест семантики цикла for"""
         print("=== Тест: семантика цикла for ===")
-        # Однострочный for
-        code = "for i in [1,2,3]: print(i)"
+        # Упрощенный тест с предварительным объявлением переменной
+        code = """
+items = [1, 2, 3]
+i = 0
+for i in items: 
+    print(i)
+"""
         result, errors = self._analyze_code(code)
 
-        # Цикл for может требовать дополнительной поддержки
         if result:
             print("✓ Цикл for проанализирован корректно")
         else:
             print(f"✗ Ошибки в цикле for: {errors}")
+
+        self.assertTrue(result)
+        self.assertEqual(len(errors), 0)
+        print()
+
+    def test_builtin_functions(self):
+        """Тест встроенных функций"""
+        print("=== Тест: встроенные функции ===")
+
+        test_cases = [
+            "print('Hello')",
+        ]
+
+        all_passed = True
+        for code in test_cases:
+            self.analyzer = SemanticAnalyzer()
+            result, errors = self._analyze_code(code)
+            if not result:
+                print(f"✗ Ошибка в: {code}")
+                for error in errors:
+                    print(f"  - {error}")
+                all_passed = False
+            else:
+                print(f"✓ Встроенная функция обработана: {code}")
+
+        self.assertTrue(all_passed)
+        print("✓ Все встроенные функции обработаны корректно")
         print()
 
     def test_return_statement(self):
         """Тест оператора return"""
         print("=== Тест: оператор return ===")
-        # Однострочные функции
         code = "def get_value(): return 42"
         result, errors = self._analyze_code(code)
 
@@ -186,9 +198,28 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_nested_scopes(self):
         """Тест вложенных областей видимости"""
         print("=== Тест: вложенные области видимости ===")
-        # Упрощенный тест с однострочными функциями
-        code = "def outer(): def inner(): return 5; return inner()"
+
+        # Тест с настоящей вложенной функцией
+        code = """
+    def outer():
+        x = 10
+
+        def inner():
+            return x + 5
+
+        return inner()
+    """
+        print("Код для анализа:")
+        print(code)
+
         result, errors = self._analyze_code(code)
+
+        if not result:
+            print("Ошибки анализа:")
+            for error in errors:
+                print(f"  - {error}")
+        else:
+            print("✓ Вложенные функции проанализированы без ошибок")
 
         self.assertTrue(result)
         self.assertEqual(len(errors), 0)
@@ -199,7 +230,6 @@ class TestSemanticAnalyzer(unittest.TestCase):
         """Тест проверки типов в бинарных операциях"""
         print("=== Тест: проверка типов в бинарных операциях ===")
 
-        # Тест корректных операций (одна строка за раз)
         valid_codes = [
             "a = 5 + 3",
             "b = 2.5 * 4.0",
@@ -209,7 +239,7 @@ class TestSemanticAnalyzer(unittest.TestCase):
 
         all_valid_passed = True
         for code in valid_codes:
-            self.analyzer = SemanticAnalyzer()  # сбрасываем анализатор для каждого теста
+            self.analyzer = SemanticAnalyzer()
             result, errors = self._analyze_code(code)
             if not result:
                 print(f"✗ Ошибка в корректной операции: {code}")
@@ -222,7 +252,6 @@ class TestSemanticAnalyzer(unittest.TestCase):
         self.assertTrue(all_valid_passed)
         print("✓ Корректные бинарные операции приняты")
 
-        # Тест некорректных операций
         invalid_codes = [
             "x = 5 + 'text'",
             "y = True - False",
@@ -231,7 +260,7 @@ class TestSemanticAnalyzer(unittest.TestCase):
 
         invalid_errors_count = 0
         for code in invalid_codes:
-            self.analyzer = SemanticAnalyzer()  # сбрасываем анализатор для каждого теста
+            self.analyzer = SemanticAnalyzer()
             result, errors = self._analyze_code(code)
             invalid_errors_count += len(errors)
             if not result:
@@ -244,7 +273,6 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_complex_expression_analysis(self):
         """Тест анализа сложных выражений"""
         print("=== Тест: анализ сложных выражений ===")
-        # Однострочная сложная функция
         code = "def calculate(a, b, c): return (a + b) * c - (a / b)"
         result, errors = self._analyze_code(code)
 
@@ -256,7 +284,6 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_error_recovery(self):
         """Тест восстановления после ошибок"""
         print("=== Тест: восстановление после ошибок ===")
-        # Однострочные тесты с ошибками
         codes_with_errors = [
             "x = undefined_var",
             "y = 5 + 'text'",
@@ -277,7 +304,6 @@ class TestSemanticAnalyzer(unittest.TestCase):
     def test_symbol_table_integrity(self):
         """Тест целостности таблицы символов"""
         print("=== Тест: целостность таблицы символов ===")
-        # Однострочные объявления
         codes = [
             "global_var = 1",
             "def func1(param1): return param1 + 1",
@@ -299,19 +325,15 @@ class TestSemanticAnalyzer(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    # Запуск тестов с детальным выводом
     print("Запуск семантических тестов...")
     print("=" * 50)
 
-    # Создаем тестовый набор
     loader = unittest.TestLoader()
     suite = loader.loadTestsFromTestCase(TestSemanticAnalyzer)
 
-    # Запускаем тесты с детальным выводом
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 
-    # Выводим итоговую статистику
     print("=" * 50)
     print(f"ИТОГИ:")
     print(f"Тестов запущено: {result.testsRun}")

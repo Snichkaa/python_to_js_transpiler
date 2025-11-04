@@ -1,43 +1,39 @@
 from enum import Enum
-from typing import Optional, Dict, Any
-from ..parser.ast_nodes import DataType
+from typing import Optional
 
 class SymbolType(Enum):
     VARIABLE = "variable"
     FUNCTION = "function"
     PARAMETER = "parameter"
 
+class DataType(Enum):
+    INT = "int"
+    FLOAT = "float"
+    STRING = "string"
+    BOOLEAN = "boolean"
+    LIST = "list"
+    NONE = "none"
+    ANY = "any"
 
 class Symbol:
-    """Запись в таблице символов"""
-
-    def __init__(self, name: str, symbol_type: SymbolType,
-                 data_type: DataType = DataType.ANY, value: Any = None,
-                 line: int = 0, column: int = 0):
+    def __init__(self, name: str, symbol_type: SymbolType, data_type: DataType, line: int, column: int):
         self.name = name
         self.symbol_type = symbol_type
         self.data_type = data_type
-        self.value = value
         self.line = line
         self.column = column
 
-
 class Scope:
-    """Область видимости"""
-
-    def __init__(self, parent: Optional['Scope'] = None):
+    def __init__(self, parent=None):
+        self.symbols = {}
         self.parent = parent
-        self.symbols: Dict[str, Symbol] = {}
 
-    def declare(self, symbol: Symbol) -> bool:
-        """Объявление символа в текущей области видимости"""
-        if symbol.name in self.symbols:
-            return False  # символ уже объявлен
+    def define(self, symbol: Symbol):
+        """Добавляет символ в текущую область видимости"""
         self.symbols[symbol.name] = symbol
-        return True
 
     def lookup(self, name: str) -> Optional[Symbol]:
-        """Поиск символа в текущей и родительских областях видимости"""
+        """Ищет символ в текущей и родительских областях видимости"""
         symbol = self.symbols.get(name)
         if symbol is not None:
             return symbol
@@ -46,36 +42,35 @@ class Scope:
         return None
 
     def lookup_local(self, name: str) -> Optional[Symbol]:
-        """Поиск символа только в текущей области видимости"""
+        """Ищет символ только в текущей области видимости"""
         return self.symbols.get(name)
 
-
 class SymbolTable:
-    """Таблица символов с поддержкой вложенных областей видимости"""
-
     def __init__(self):
         self.current_scope = Scope()
+        self.scope_stack = [self.current_scope]
 
     def enter_scope(self):
         """Вход в новую область видимости"""
-        self.current_scope = Scope(self.current_scope)
+        new_scope = Scope(self.current_scope)
+        self.current_scope = new_scope
+        self.scope_stack.append(new_scope)
 
     def exit_scope(self):
         """Выход из текущей области видимости"""
-        if self.current_scope.parent is not None:
-            self.current_scope = self.current_scope.parent
+        if len(self.scope_stack) > 1:
+            self.scope_stack.pop()
+            self.current_scope = self.scope_stack[-1]
 
-    def declare(self, name: str, symbol_type: SymbolType,
-                data_type: DataType = DataType.ANY, value: Any = None,
-                line: int = 0, column: int = 0) -> bool:
-        """Объявление символа"""
-        symbol = Symbol(name, symbol_type, data_type, value, line, column)
-        return self.current_scope.declare(symbol)
+    def define(self, name: str, symbol_type: SymbolType, data_type: DataType, line: int, column: int):
+        """Добавляет символ в текущую область видимости"""
+        symbol = Symbol(name, symbol_type, data_type, line, column)
+        self.current_scope.define(symbol)
 
     def lookup(self, name: str) -> Optional[Symbol]:
-        """Поиск символа"""
+        """Ищет символ в текущей и всех родительских областях видимости"""
         return self.current_scope.lookup(name)
 
     def lookup_local(self, name: str) -> Optional[Symbol]:
-        """Поиск символа в текущей области видимости"""
+        """Ищет символ только в текущей области видимости"""
         return self.current_scope.lookup_local(name)
