@@ -40,12 +40,27 @@ class Parser:
         while self.peek(TokenType.NEWLINE):
             self.next_token()
 
+    def skip_dedents(self):
+        """Пропускаем все DEDENT токены"""
+        while self.peek(TokenType.DEDENT):
+            self.next_token()
+
+    def skip_newlines_and_dedents(self):
+        """Пропускаем переводы строк и DEDENT токены"""
+        while self.peek(TokenType.NEWLINE) or self.peek(TokenType.DEDENT):
+            self.next_token()
+
     def parse(self) -> Program:
         """Начало разбора - программа"""
         statements = []
         self.skip_newlines()
 
         while not self.peek(TokenType.EOF):
+            # Пропускаем DEDENT токены на верхнем уровне
+            if self.peek(TokenType.DEDENT):
+                self.next_token()
+                continue
+
             if self.peek(TokenType.IMPORT):
                 statements.append(self.parse_import())
             elif self.peek(TokenType.DEF):
@@ -56,8 +71,28 @@ class Parser:
                 statements.append(self.parse_while_loop())
             elif self.peek(TokenType.FOR):
                 statements.append(self.parse_for_loop())
+            elif self.peek(TokenType.VARIABLE) and self._peek_assign():
+                statements.append(self.parse_assignment())
+            elif self.peek(TokenType.RETURN):
+                statements.append(self.parse_return_statement())
             else:
-                statements.append(self.parse_statement())
+                # Проверяем, что это действительно выражение, а не служебный токен
+                if (self.peek(TokenType.VARIABLE) or
+                        self.peek(TokenType.INTEGER) or
+                        self.peek(TokenType.FLOAT_NUMBER) or
+                        self.peek(TokenType.STRING) or
+                        self.peek(TokenType.LPAREN) or
+                        self.peek(TokenType.PLUS) or
+                        self.peek(TokenType.MINUS) or
+                        self.peek(TokenType.NOT)):
+                    statements.append(ExpressionStatement(
+                        self.parse_expression(),
+                        self.current_token.line,
+                        self.current_token.column
+                    ))
+                else:
+                    # Пропускаем неизвестные токены (например, оставшиеся DEDENT)
+                    self.next_token()
 
             self.skip_newlines()
 
@@ -109,29 +144,57 @@ class Parser:
 
     def parse_block(self) -> Block:
         """Разбор блока кода"""
-        # Ожидаем отступ
-        if not self.peek(TokenType.INDENT):
-            # Если нет INDENT, создаем блок с одной строкой
-            statements = [self.parse_statement()]
-            return Block(statements, self.current_token.line, self.current_token.column)
-
-        self.next_token()  # пропускаем INDENT
-
         statements = []
-        self.skip_newlines()
 
-        # Читаем все операторы до следующего DEDENT
-        while not self.peek(TokenType.DEDENT) and not self.peek(TokenType.EOF):
-            statements.append(self.parse_statement())
-            self.skip_newlines()
+        # Если есть отступ, парсим блок с отступами
+        if self.peek(TokenType.INDENT):
+            self.next_token()  # пропускаем INDENT
 
-        if self.peek(TokenType.DEDENT):
-            self.next_token()  # пропускаем DEDENT
+            # Парсим все операторы до DEDENT или ключевых слов, завершающих блок
+            while (not self.peek(TokenType.DEDENT) and
+                   not self.peek(TokenType.EOF) and
+                   not self.peek(TokenType.ELSE) and  # ВАЖНО: не продолжаем если встретили else
+                   not self.peek(TokenType.ELIF)):
+
+                # Пропускаем пустые строки
+                self.skip_newlines()
+                if (self.peek(TokenType.DEDENT) or
+                        self.peek(TokenType.EOF) or
+                        self.peek(TokenType.ELSE) or
+                        self.peek(TokenType.ELIF)):
+                    break
+
+                # Парсим оператор
+                statements.append(self.parse_statement())
+
+                # Пропускаем newline после оператора
+                self.skip_newlines()
+
+            # Пропускаем DEDENT если есть
+            if self.peek(TokenType.DEDENT):
+                self.next_token()
+
+        else:
+            # Блок без отступа - одна строка
+            if not self.peek(TokenType.NEWLINE) and not self.peek(TokenType.EOF):
+                statements.append(self.parse_statement())
 
         return Block(statements, self.current_token.line, self.current_token.column)
 
     def parse_statement(self) -> Node:
         """Разбор оператора"""
+        # Если достигли конца блока или ключевых слов, которые не являются операторами,
+        # возвращаем пустой statement
+        if (self.peek(TokenType.DEDENT) or
+                self.peek(TokenType.EOF) or
+                self.peek(TokenType.ELSE) or
+                self.peek(TokenType.ELIF)):
+            return ExpressionStatement(
+                Literal(None, DataType.NONE, self.current_token.line, self.current_token.column),
+                self.current_token.line,
+                self.current_token.column
+            )
+
         if self.peek(TokenType.RETURN):
             return self.parse_return_statement()
         elif self.peek(TokenType.IF):
@@ -143,8 +206,32 @@ class Parser:
         elif self.peek(TokenType.VARIABLE) and self._peek_assign():
             return self.parse_assignment()
         else:
-            return ExpressionStatement(self.parse_expression(),
-                                       self.current_token.line, self.current_token.column)
+            # Проверяем, что текущий токен может быть началом выражения
+            if (self.peek(TokenType.VARIABLE) or
+                    self.peek(TokenType.INTEGER) or
+                    self.peek(TokenType.FLOAT_NUMBER) or
+                    self.peek(TokenType.STRING) or
+                    self.peek(TokenType.TRUE) or
+                    self.peek(TokenType.FALSE) or
+                    self.peek(TokenType.NONE) or
+                    self.peek(TokenType.LPAREN) or
+                    self.peek(TokenType.LBRACKET) or
+                    self.peek(TokenType.PLUS) or
+                    self.peek(TokenType.MINUS) or
+                    self.peek(TokenType.NOT)):
+                return ExpressionStatement(
+                    self.parse_expression(),
+                    self.current_token.line,
+                    self.current_token.column
+                )
+            else:
+                # Если это не выражение и не оператор, пропускаем токен
+                self.next_token()
+                return ExpressionStatement(
+                    Literal(None, DataType.NONE, self.current_token.line, self.current_token.column),
+                    self.current_token.line,
+                    self.current_token.column
+                )
 
     def parse_return_statement(self) -> ReturnStatement:
         """Разбор оператора return"""
@@ -176,6 +263,50 @@ class Parser:
                 operator_token.column
             )
             return Assignment(target, value, target.line, target.column)
+        elif self.peek(TokenType.MINUS_ASSIGN):
+            operator_token = self.expect(TokenType.MINUS_ASSIGN)
+            # Преобразуем a -= b в a = a - b
+            value = BinaryOperation(
+                Identifier(target.name, target.line, target.column),
+                '-',
+                self.parse_expression(),
+                operator_token.line,
+                operator_token.column
+            )
+            return Assignment(target, value, target.line, target.column)
+        elif self.peek(TokenType.MUL_ASSIGN):
+            operator_token = self.expect(TokenType.MUL_ASSIGN)
+            # Преобразуем a *= b в a = a * b
+            value = BinaryOperation(
+                Identifier(target.name, target.line, target.column),
+                '*',
+                self.parse_expression(),
+                operator_token.line,
+                operator_token.column
+            )
+            return Assignment(target, value, target.line, target.column)
+        elif self.peek(TokenType.DIV_ASSIGN):
+            operator_token = self.expect(TokenType.DIV_ASSIGN)
+            # Преобразуем a /= b в a = a / b
+            value = BinaryOperation(
+                Identifier(target.name, target.line, target.column),
+                '/',
+                self.parse_expression(),
+                operator_token.line,
+                operator_token.column
+            )
+            return Assignment(target, value, target.line, target.column)
+        elif self.peek(TokenType.MOD_ASSIGN):
+            operator_token = self.expect(TokenType.MOD_ASSIGN)
+            # Преобразуем a %= b в a = a % b
+            value = BinaryOperation(
+                Identifier(target.name, target.line, target.column),
+                '%',
+                self.parse_expression(),
+                operator_token.line,
+                operator_token.column
+            )
+            return Assignment(target, value, target.line, target.column)
         else:
             raise UnexpectedTokenError("assignment operator", self.current_token.type.name,
                                        self.current_token.line, self.current_token.column)
@@ -195,16 +326,14 @@ class Parser:
         then_branch = self.parse_block()
         else_branch = None
 
-        # Пропускаем пустые строки после then_branch
-        self.skip_newlines()
+        # Пропускаем возможные newline и dedent после then_branch
+        self.skip_newlines_and_dedents()
 
+        # Проверяем наличие else
         if self.peek(TokenType.ELSE):
             self.next_token()  # пропускаем else
-            self.expect(TokenType.COLON, "Ожидался ':'")
-
-            # Пропускаем возможные newline после двоеточия
+            self.expect(TokenType.COLON, "Ожидался ':' после else")
             self.skip_newlines()
-
             else_branch = self.parse_block()
 
         return IfStatement(condition, then_branch, else_branch, token.line, token.column)
@@ -283,17 +412,17 @@ class Parser:
 
         while True:
             # Проверяем текущий токен на соответствие операторам сравнения
-            if self.current_token.type == TokenType.EQUALS:
+            if self.peek(TokenType.EQ):
                 operator = '=='
-            elif self.current_token.type == TokenType.NOT_EQUALS:
+            elif self.peek(TokenType.NE):
                 operator = '!='
-            elif self.current_token.type == TokenType.GREATER:
+            elif self.peek(TokenType.GT):
                 operator = '>'
-            elif self.current_token.type == TokenType.LESS:
+            elif self.peek(TokenType.LT):
                 operator = '<'
-            elif self.current_token.type == TokenType.GREATER_EQUAL:
+            elif self.peek(TokenType.GTE):
                 operator = '>='
-            elif self.current_token.type == TokenType.LESS_EQUAL:
+            elif self.peek(TokenType.LTE):
                 operator = '<='
             else:
                 break  # Если не оператор сравнения, выходим из цикла
@@ -310,7 +439,7 @@ class Parser:
         """Сложение и вычитание"""
         node = self.parse_multiplication()
 
-        while self.current_token.type in (TokenType.PLUS, TokenType.MINUS):
+        while self.peek(TokenType.PLUS) or self.peek(TokenType.MINUS):
             operator_token = self.current_token
             self.next_token()
             right = self.parse_multiplication()
@@ -326,7 +455,7 @@ class Parser:
         """Умножение, деление, остаток от деления"""
         node = self.parse_power()
 
-        while self.current_token.type in (TokenType.MULTIPLY, TokenType.DIVIDE, TokenType.MODULO):
+        while self.peek(TokenType.MUL) or self.peek(TokenType.DIV) or self.peek(TokenType.MOD):
             operator_token = self.current_token
             self.next_token()
             right = self.parse_power()
@@ -342,7 +471,7 @@ class Parser:
         """Возведение в степень"""
         node = self.parse_unary()
 
-        if self.peek(TokenType.POWER):
+        if self.peek(TokenType.POW):
             operator_token = self.current_token
             self.next_token()
             right = self.parse_power()
@@ -356,7 +485,7 @@ class Parser:
 
     def parse_unary(self) -> Node:
         """Унарные операции"""
-        if self.current_token.type in (TokenType.PLUS, TokenType.MINUS, TokenType.NOT):
+        if self.peek(TokenType.PLUS) or self.peek(TokenType.MINUS) or self.peek(TokenType.NOT):
             operator_token = self.current_token
             self.next_token()
             operand = self.parse_unary()
@@ -486,7 +615,7 @@ class Parser:
             TokenType.ASSIGN,
             TokenType.PLUS_ASSIGN,
             TokenType.MINUS_ASSIGN,
-            TokenType.MULTIPLY_ASSIGN,
-            TokenType.DIVIDE_ASSIGN,
-            TokenType.MODULO_ASSIGN
+            TokenType.MUL_ASSIGN,
+            TokenType.DIV_ASSIGN,
+            TokenType.MOD_ASSIGN
         ]

@@ -45,6 +45,9 @@ class TestParser(unittest.TestCase):
             print(f"{indent}BinaryOperation: {node.operator}")
             self._print_ast(node.left, level + 1)
             self._print_ast(node.right, level + 1)
+        elif isinstance(node, UnaryOperation):  # ДОБАВЛЕНО: обработка UnaryOperation
+            print(f"{indent}UnaryOperation: {node.operator}")
+            self._print_ast(node.operand, level + 1)
         elif isinstance(node, Identifier):
             print(f"{indent}Identifier: {node.name}")
         elif isinstance(node, Literal):
@@ -148,52 +151,50 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(if_stmt.then_branch, Block)
         self.assertIsNone(if_stmt.else_branch)  # Проверяем, что else нет
 
-    # def test_if_else_statement(self):
-    #     """Тест парсинга условного оператора if-else"""
-    #     code = "if x > 5:\n    y = 10\nelse:\n    y = 0"
-    #
-    #     print("DEBUG if-else code:")
-    #     for i, line in enumerate(code.split('\n'), 1):
-    #         print(f"{i}: '{line}'")
-    #
-    #     lexer = Lexer(code)
-    #     parser = Parser(lexer)
-    #     ast = parser.parse()
-    #
-    #     self.print_test_info("Условный оператор if-else", ast, "Program -> IfStatement")
-    #     self.assertIsInstance(ast, Program)
-    #     self.assertEqual(len(ast.statements), 1)
-    #     if_stmt = ast.statements[0]
-    #     self.assertIsInstance(if_stmt, IfStatement)
-    #     self.assertIsInstance(if_stmt.condition, BinaryOperation)
-    #     self.assertIsInstance(if_stmt.then_branch, Block)
-    #     self.assertIsInstance(if_stmt.else_branch, Block)  # Проверяем, что else есть
+    def test_if_else_statement(self):
+        """Тест парсинга условного оператора if-else"""
+        code = "if x > 5:\n    y = 10\nelse:\n    y = 0"
+
+        print("DEBUG if-else code:")
+        for i, line in enumerate(code.split('\n'), 1):
+            print(f"{i}: '{line}'")
+
+        lexer = Lexer(code)
+        parser = Parser(lexer)
+        ast = parser.parse()
+
+        self.print_test_info("Условный оператор if-else", ast, "Program -> IfStatement")
+        self.assertIsInstance(ast, Program)
+        self.assertEqual(len(ast.statements), 1)
+        if_stmt = ast.statements[0]
+        self.assertIsInstance(if_stmt, IfStatement)
+        self.assertIsInstance(if_stmt.condition, BinaryOperation)
+        self.assertIsInstance(if_stmt.then_branch, Block)
+        self.assertIsInstance(if_stmt.else_branch, Block)  # Проверяем, что else есть
 
     def test_multiple_functions(self):
-        """Тест парсинга нескольких функций"""
-        # Тестируем функции по отдельности
-        code1 = "def func1():\n    return 1"
-        code2 = "def func2(x):\n    return x * 2"
+        """Тест парсинга нескольких функций в одном коде"""
+        code = """def func1():
+        return 1
 
-        lexer = Lexer(code1)
+    def func2(x):
+        return x * 2"""
+
+        lexer = Lexer(code)
         parser = Parser(lexer)
-        ast1 = parser.parse()
+        ast = parser.parse()
 
-        self.print_test_info("Функция 1", ast1, "Program -> FunctionDeclaration")
-        self.assertIsInstance(ast1, Program)
-        self.assertEqual(len(ast1.statements), 1)
-        self.assertIsInstance(ast1.statements[0], FunctionDeclaration)
-        self.assertEqual(ast1.statements[0].name, "func1")
+        self.print_test_info("Две функции", ast, "Program -> FunctionDeclaration x2")
+        self.assertIsInstance(ast, Program)
+        self.assertEqual(len(ast.statements), 2)
 
-        lexer = Lexer(code2)
-        parser = Parser(lexer)
-        ast2 = parser.parse()
+        # Проверяем первую функцию
+        self.assertIsInstance(ast.statements[0], FunctionDeclaration)
+        self.assertEqual(ast.statements[0].name, "func1")
 
-        self.print_test_info("Функция 2", ast2, "Program -> FunctionDeclaration")
-        self.assertIsInstance(ast2, Program)
-        self.assertEqual(len(ast2.statements), 1)
-        self.assertIsInstance(ast2.statements[0], FunctionDeclaration)
-        self.assertEqual(ast2.statements[0].name, "func2")
+        # Проверяем вторую функцию
+        self.assertIsInstance(ast.statements[1], FunctionDeclaration)
+        self.assertEqual(ast.statements[1].name, "func2")
 
     def test_while_loop(self):
         """Тест парсинга цикла while"""

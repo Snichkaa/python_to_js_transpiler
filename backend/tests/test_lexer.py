@@ -5,6 +5,7 @@ import os
 # Добавляем путь к корневой директории проекта
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
+
 from backend.src.lexer.lexer import Lexer
 from backend.src.lexer.token_types import TokenType
 from backend.src.exceptions import LexerError, InvalidCharacterError, UnclosedStringError, InvalidNumberError
@@ -237,7 +238,7 @@ z = 15"""
         expected_types = [
             TokenType.VARIABLE, TokenType.ASSIGN,
             TokenType.LPAREN, TokenType.VARIABLE, TokenType.PLUS, TokenType.VARIABLE, TokenType.RPAREN,
-            TokenType.MULTIPLY, TokenType.FLOAT_NUMBER, TokenType.MINUS,
+            TokenType.MUL, TokenType.FLOAT, TokenType.MINUS,  # Исправлено здесь
             TokenType.VARIABLE, TokenType.LPAREN, TokenType.INTEGER, TokenType.COMMA, TokenType.VARIABLE,
             TokenType.RPAREN
         ]

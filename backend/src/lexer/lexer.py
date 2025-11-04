@@ -55,47 +55,44 @@ class Lexer:
         if self.pending_tokens:
             return self.pending_tokens.pop(0)
 
-        # Подсчитываем текущий отступ (и пробелы, и табы)
+        # Подсчитываем текущий отступ
         indent_level = 0
         while self.current_char in (' ', '\t'):
             if self.current_char == ' ':
                 indent_level += 1
             else:  # таб
-                # Обычно таб = 4 пробела, но можно настроить
                 indent_level = (indent_level // 4 + 1) * 4
             self.advance()
 
-        # Если после пробелов идет конец строки - пропускаем
-        if self.current_char == '\n':
-            self.advance()
+        # Если после пробелов идет конец строки, комментарий или конец файла - пропускаем
+        if self.current_char in ('\n', '#', None):
             return None
 
         current_indent = self.indent_stack[-1]
 
         if indent_level > current_indent:
-            # Новый уровень отступа
             self.indent_stack.append(indent_level)
             return Token(TokenType.INDENT, ' ' * indent_level, self.line, self.column)
 
         elif indent_level < current_indent:
-            # Уменьшение отступа - генерируем DEDENT
             dedent_tokens = []
             while self.indent_stack[-1] > indent_level:
                 self.indent_stack.pop()
                 dedent_tokens.append(Token(TokenType.DEDENT, '', self.line, self.column))
 
-            # Проверяем согласованность отступов
+            # Более мягкая проверка несоответствия отступов
             if self.indent_stack[-1] != indent_level:
-                self.error("Inconsistent indentation")
+                # Добавляем дополнительные DEDENT до базового уровня
+                while len(self.indent_stack) > 1 and self.indent_stack[-1] > indent_level:
+                    self.indent_stack.pop()
+                    dedent_tokens.append(Token(TokenType.DEDENT, '', self.line, self.column))
 
-            # Добавляем DEDENT токены в pending_tokens и возвращаем первый
             if dedent_tokens:
                 self.pending_tokens.extend(dedent_tokens)
                 return self.pending_tokens.pop(0)
 
             return None
 
-        # Отступ остался таким же
         return None
 
     def read_number(self):
@@ -212,32 +209,41 @@ class Lexer:
         if self.pending_tokens:
             return self.pending_tokens.pop(0)
 
-        # Обрабатываем отступы в начале строки
-        if self.column == 1 and self.current_char == ' ':
-            indent_token = self.handle_indentation()
-            if indent_token:
-                return indent_token
+        # Бесконечный цикл для пропуска пустого содержимого
+        while True:
+            # Обрабатываем отступы в начале строки
+            if self.column == 1 and self.current_char in (' ', '\t'):
+                indent_token = self.handle_indentation()
+                if indent_token:
+                    return indent_token
 
-        # Пропускаем пробелы
-        self.skip_whitespace()
+            # Пропускаем пробелы
+            self.skip_whitespace()
 
-        # Конец файла
-        if self.current_char is None:
-            #Генерируем DEDENT токены для оставшихся отступов
-            if len(self.indent_stack) > 1:
-                self.indent_stack.pop()
-                return Token(TokenType.DEDENT, '', self.line, self.column)
-            return Token(TokenType.EOF, '', self.line, self.column)
+            # Конец файла
+            if self.current_char is None:
+                if len(self.indent_stack) > 1:
+                    self.indent_stack.pop()
+                    return Token(TokenType.DEDENT, '', self.line, self.column)
+                return Token(TokenType.EOF, '', self.line, self.column)
 
-        # Новая строка
-        if self.current_char == '\n':
-            self.advance()
-            return Token(TokenType.NEWLINE, '\n', self.line - 1, self.column)
+            # Новая строка
+            if self.current_char == '\n':
+                line = self.line
+                column = self.column
+                self.advance()
+                # Если следующая строка пустая, продолжаем цикл
+                continue
 
-        # Комментарии
-        if self.current_char == '#':
-            self.skip_comment()
-            return self.get_next_token()  # рекурсивно получаем следующий токен
+            # Комментарии
+            if self.current_char == '#':
+                self.skip_comment()
+                continue  # продолжаем цикл после комментария
+
+            # Если дошли сюда, значит есть значимое содержимое
+            break
+
+        # Теперь обрабатываем значимые токены
 
         # Числа
         if self.current_char.isdigit():
@@ -259,10 +265,12 @@ class Lexer:
         # Разделители
         if self.current_char in DELIMITERS:
             delim = self.current_char
+            line = self.line
+            col = self.column
             self.advance()
-            return Token(DELIMITERS[delim], delim, self.line, self.column - 1)
+            return Token(DELIMITERS[delim], delim, line, col)
 
-        #Неизвестный символ
+        # Неизвестный символ
         self.error(f"Invalid character '{self.current_char}'")
 
     def tokenize(self):
