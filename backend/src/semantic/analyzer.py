@@ -247,21 +247,58 @@ class SemanticAnalyzer:
                 ))
         return DataType.NONE
 
-    def visit_functioncall(self, node):
-        """Посещение вызова функции"""
-        # Проверяем, что функция объявлена
-        symbol = self.symbol_table.lookup(node.function_name.name)
-        if symbol is None:
-            self.errors.append(UndefinedVariableError(
-                node.function_name.name, node.function_name.line, node.function_name.column
-            ))
-            return DataType.ANY
+    def visit_functiondeclaration(self, node):
+        """Посещение объявления функции"""
+        # Проверяем конфликты в текущей области видимости
+        local_symbol = self.symbol_table.lookup_local(node.name)
+        if local_symbol is not None and local_symbol.symbol_type == SymbolType.FUNCTION:
+            self.errors.append(RedeclarationError(node.name, node.line, node.column))
+            return
 
-        # Анализируем аргументы
-        for arg in node.arguments:
-            self.visit(arg)
+        # Добавляем функцию в текущую область видимости
+        self.symbol_table.define(
+            node.name,
+            SymbolType.FUNCTION,
+            node.return_type,
+            node.line,
+            node.column
+        )
 
-        return symbol.data_type if symbol else DataType.ANY
+        # Входим в новую область видимости для тела функции
+        self.symbol_table.enter_scope()
+
+        # Добавляем параметры в область видимости функции
+        for param in node.parameters:
+            self.symbol_table.define(
+                param.name,
+                SymbolType.VARIABLE,
+                DataType.ANY,
+                param.line,
+                param.column
+            )
+
+        # Сохраняем текущий тип возвращаемого значения
+        old_return_type = self.current_function_return_type
+        self.current_function_return_type = node.return_type
+
+        # Проходим по телу функции и находим объявления вложенных функций
+        for statement in node.body.statements:
+            if isinstance(statement, FunctionDeclaration):
+                # Добавляем вложенную функцию в текущую область видимости (внутри внешней функции)
+                self.symbol_table.define(
+                    statement.name,
+                    SymbolType.FUNCTION,
+                    statement.return_type,
+                    statement.line,
+                    statement.column
+                )
+
+        for statement in node.body.statements:
+            self.visit(statement)
+
+        # Выходим из области видимости функции
+        self.symbol_table.exit_scope()
+        self.current_function_return_type = old_return_type
 
     def visit_expressionstatement(self, node):
         """Посещение выражения как оператора"""
