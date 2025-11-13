@@ -174,7 +174,7 @@ class Lexer:
             result += self.current_char
             self.advance()
 
-        #Проверяем, является ли ключевым словом
+        # Проверяем, является ли ключевым словом
         if result in KEYWORDS:
             return Token(KEYWORDS[result], result, start_line, start_column)
         elif result in RESERVED_WORDS:

@@ -19,6 +19,8 @@ class NodeType(Enum):
     BLOCK = "block"
     IMPORT = "import"
     FUNCTION_CALL = "function_call"
+    BREAK_STATEMENT = "break_statement"
+    CONTINUE_STATEMENT = "continue_statement"
 
 
 class DataType(Enum):
@@ -117,7 +119,7 @@ class Identifier(Node):
 class Literal(Node):
     """Литерал (число, строка, булево значение и т.д.)"""
 
-    def __init__(self, value: Union[int, float, str, bool, None],
+    def __init__(self, value: Union[int, float, str, bool, None, list],
                  literal_type: DataType, line: int, column: int):
         super().__init__(NodeType.LITERAL, line, column)
         self.value = value
@@ -194,3 +196,17 @@ class FunctionCall(Node):
         super().__init__(NodeType.FUNCTION_CALL, line, column)
         self.name = name
         self.arguments = arguments
+
+
+class BreakStatement(Node):
+    """Оператор break"""
+
+    def __init__(self, line: int, column: int):
+        super().__init__(NodeType.BREAK_STATEMENT, line, column)
+
+
+class ContinueStatement(Node):
+    """Оператор continue"""
+
+    def __init__(self, line: int, column: int):
+        super().__init__(NodeType.CONTINUE_STATEMENT, line, column)

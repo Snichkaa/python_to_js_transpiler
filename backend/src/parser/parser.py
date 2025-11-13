@@ -52,6 +52,8 @@ class Parser:
 
     def parse(self) -> Program:
         """Начало разбора - программа"""
+        print(f"DEBUG PARSER: Starting parse, current token: {self.current_token}")
+
         statements = []
         self.skip_newlines()
 
@@ -204,6 +206,10 @@ class Parser:
             return self.parse_while_loop()
         elif self.peek(TokenType.FOR):
             return self.parse_for_loop()
+        elif self.peek(TokenType.BREAK):
+            return self.parse_break_statement()
+        elif self.peek(TokenType.CONTINUE):
+            return self.parse_continue_statement()
         elif self.peek(TokenType.VARIABLE) and self._peek_assign():
             return self.parse_assignment()
         else:
@@ -219,9 +225,18 @@ class Parser:
                     self.peek(TokenType.LBRACKET) or
                     self.peek(TokenType.PLUS) or
                     self.peek(TokenType.MINUS) or
-                    self.peek(TokenType.NOT)):
+                    self.peek(TokenType.NOT) or
+                    self.peek(TokenType.PRINT)):  # ДОБАВЛЕНО: поддержка print как начала выражения
                 return ExpressionStatement(
                     self.parse_expression(),
+                    self.current_token.line,
+                    self.current_token.column
+                )
+            elif self.peek(TokenType.PASS):
+                # Пропускаем pass
+                self.next_token()
+                return ExpressionStatement(
+                    Literal(None, DataType.NONE, self.current_token.line, self.current_token.column),
                     self.current_token.line,
                     self.current_token.column
                 )
@@ -244,6 +259,16 @@ class Parser:
             value = self.parse_expression()
 
         return ReturnStatement(value, token.line, token.column)
+
+    def parse_break_statement(self) -> BreakStatement:
+        """Разбор оператора break"""
+        token = self.expect(TokenType.BREAK, "Ожидался 'break'")
+        return BreakStatement(token.line, token.column)
+
+    def parse_continue_statement(self) -> ContinueStatement:
+        """Разбор оператора continue"""
+        token = self.expect(TokenType.CONTINUE, "Ожидался 'continue'")
+        return ContinueStatement(token.line, token.column)
 
     def parse_assignment(self) -> Assignment:
         """Разбор присваивания"""
@@ -330,8 +355,11 @@ class Parser:
         # Пропускаем возможные newline и dedent после then_branch
         self.skip_newlines_and_dedents()
 
-        # Проверяем наличие else
-        if self.peek(TokenType.ELSE):
+        # Обрабатываем цепочку elif/else
+        if self.peek(TokenType.ELIF):
+            # Рекурсивно парсим elif как вложенный if
+            else_branch = self.parse_if_statement()
+        elif self.peek(TokenType.ELSE):
             self.next_token()  # пропускаем else
             self.expect(TokenType.COLON, "Ожидался ':' после else")
             self.skip_newlines()
@@ -502,7 +530,9 @@ class Parser:
         """Разбор первичных выражений"""
         token = self.current_token
 
-        if self.peek(TokenType.VARIABLE) or self.peek(TokenType.PRINT):
+        if (self.peek(TokenType.VARIABLE) or
+            self.peek(TokenType.PRINT) or  # ДОБАВЛЕНО: поддержка print как идентификатора
+            self.peek(TokenType.STR)):
             self.next_token()
 
             # Проверяем, является ли это вызовом функции

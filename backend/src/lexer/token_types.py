@@ -12,6 +12,7 @@ class TokenType(Enum):
     IMPORT = "IMPORT"
     WHILE = "WHILE"
     RETURN = "RETURN"
+    PASS = "PASS"
 
     # Зарезервированные слова
     FALSE = "FALSE"
@@ -97,6 +98,7 @@ KEYWORDS = {
     'import': TokenType.IMPORT,
     'while': TokenType.WHILE,
     'return': TokenType.RETURN,
+    'pass': TokenType.PASS,
 }
 
 RESERVED_WORDS = {
