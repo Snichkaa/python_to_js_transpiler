@@ -64,18 +64,42 @@ class CodeGenerator:
     def visit_expressionstatement(self, node: ExpressionStatement):
         """Обработка выражения-оператора"""
         expr_code = self.visit(node.expression)
+
+        # ОБНОВЛЕНО: Всегда добавляем точку с запятой
+        # И проверяем, что это не просто идентификатор
         if expr_code:
-            # ЕСЛИ это вызов функции (особенно print), добавляем точку с запятой
-            if "console.log" in expr_code or "(" in expr_code:
-                self.add_line(f"{expr_code};")
-            else:
-                # Для простых выражений тоже добавляем точку с запятой
-                self.add_line(f"{expr_code};")
+            self.add_line(f"{expr_code};")
+
+        # Добавим отладочный вывод
+        print(f"DEBUG GENERATOR: ExpressionStatement: {expr_code}")
+
+    def _needs_parentheses_for_logical(self, node, parent_operator=None):
+        """Определяет, нужны ли скобки для логического выражения"""
+        if not isinstance(node, BinaryOperation):
+            return False
+
+        # Если это логическая операция внутри другой логической операции
+        if node.operator in ['&&', '||'] and parent_operator in ['&&', '||']:
+            # Проверяем приоритет
+            precedence = {'&&': 1, '||': 0}
+            node_precedence = precedence.get(node.operator, 0)
+            parent_precedence = precedence.get(parent_operator, 0)
+            return node_precedence < parent_precedence
+
+        return False
 
     def visit_assignment(self, node: Assignment):
         """Обработка присваивания - преобразуем в объявление переменной"""
         target_name = self.visit(node.target)
         value = self.visit(node.value)
+
+        # Убираем лишние внешние скобки из значения
+        if value.startswith('(') and value.endswith(')'):
+            # Проверяем, можно ли убрать скобки
+            inner = value[1:-1]
+            # Если внутри нет сложной логики с операторами сравнения/логики, убираем скобки
+            if '&&' not in inner and '||' not in inner:
+                value = inner
 
         # Если переменная еще не объявлена, используем let
         if target_name not in self.declared_variables:
@@ -84,6 +108,17 @@ class CodeGenerator:
         else:
             # Если уже объявлена, просто присваиваем
             self.add_line(f"{target_name} = {value};")
+
+    def _get_operator_precedence(self, operator):
+        """Возвращает приоритет оператора"""
+        precedence = {
+            '**': 4,
+            '*': 3, '/': 3, '%': 3,
+            '+': 2, '-': 2,
+            '>': 1, '<': 1, '>=': 1, '<=': 1, '==': 1, '!=': 1,
+            '&&': 0, '||': 0
+        }
+        return precedence.get(operator, 0)
 
     def visit_binaryoperation(self, node: BinaryOperation):
         """Обработка бинарной операции"""
@@ -99,23 +134,46 @@ class CodeGenerator:
 
         operator = operator_map.get(node.operator, node.operator)
 
-        # УМНЫЕ СКОБКИ: добавляем скобки только когда нужно
-        # Для простых идентификаторов и литералов скобки не нужны
-        needs_parentheses = True
+        # Специальная обработка для логических операторов
+        # Если оператор логический (&& или ||), всегда добавляем скобки к сравнениям
+        if operator in ['&&', '||']:
+            # Проверяем, является ли левая часть сравнением
+            left_is_comparison = isinstance(node.left, BinaryOperation) and node.left.operator in ['==', '!=', '>', '<',
+                                                                                                   '>=', '<=']
+            # Проверяем, является ли правая часть сравнением
+            right_is_comparison = isinstance(node.right, BinaryOperation) and node.right.operator in ['==', '!=', '>',
+                                                                                                      '<', '>=', '<=']
 
-        # Если оба операнда простые (идентификаторы или литералы), скобки не нужны
-        if (isinstance(node.left, (Identifier, Literal)) and
-                isinstance(node.right, (Identifier, Literal))):
-            needs_parentheses = False
+            # Для логических операций всегда добавляем скобки вокруг сравнений
+            left_str = f"({left})" if left_is_comparison else left
+            right_str = f"({right})" if right_is_comparison else right
 
-        # Для операторов сравнения тоже часто не нужны скобки
-        if node.operator in ['==', '!=', '>', '<', '>=', '<=']:
-            needs_parentheses = False
+            return f"{left_str} {operator} {right_str}"
 
-        if needs_parentheses:
-            return f"({left} {operator} {right})"
-        else:
-            return f"{left} {operator} {right}"
+        # Остальная логика для других операторов остается прежней
+        current_precedence = self._get_operator_precedence(operator)
+
+        # Проверяем, нужно ли добавлять скобки для левой части
+        left_needs_paren = False
+        if isinstance(node.left, BinaryOperation):
+            left_precedence = self._get_operator_precedence(node.left.operator)
+            left_needs_paren = left_precedence < current_precedence
+
+        # Проверяем, нужно ли добавлять скобки для правой части
+        right_needs_paren = False
+        if isinstance(node.right, BinaryOperation):
+            right_precedence = self._get_operator_precedence(node.right.operator)
+            right_needs_paren = right_precedence <= current_precedence
+
+        # Особый случай: для оператора возведения в степень (**) правоассоциативен
+        if operator == '**' and isinstance(node.right, BinaryOperation):
+            right_precedence = self._get_operator_precedence(node.right.operator)
+            right_needs_paren = right_precedence < current_precedence
+
+        left_str = f"({left})" if left_needs_paren else left
+        right_str = f"({right})" if right_needs_paren else right
+
+        return f"{left_str} {operator} {right_str}"
 
     def visit_unaryoperation(self, node: UnaryOperation):
         """Обработка унарной операции"""
@@ -245,6 +303,8 @@ class CodeGenerator:
         name = self.visit(node.name)
         args = ', '.join([self.visit(arg) for arg in node.arguments])
 
+        print(f"DEBUG GENERATOR: FunctionCall: name={name}, args={args}")  # ДЛЯ ОТЛАДКИ
+
         # Специальная обработка для print -> console.log
         if name == "print":
             return f"console.log({args})"
@@ -255,6 +315,13 @@ class CodeGenerator:
         """Обработка оператора return"""
         if node.value:
             value = self.visit(node.value)
+            # Убираем лишние скобки вокруг простых выражений
+            if value.startswith('(') and value.endswith(')'):
+                # Проверяем, действительно ли нужны скобки
+                inner = value[1:-1]
+                # Если это простое выражение без вложенных скобок, убираем внешние
+                if '(' not in inner and ')' not in inner:
+                    value = inner
             self.add_line(f"return {value};")
         else:
             self.add_line("return;")

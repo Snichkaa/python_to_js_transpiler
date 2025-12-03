@@ -63,6 +63,8 @@ class Parser:
                 self.next_token()
                 continue
 
+            print(f"DEBUG PARSER: Parsing statement, current token: {self.current_token}")  # ДОБАВЛЕНО
+
             if self.peek(TokenType.IMPORT):
                 statements.append(self.parse_import())
             elif self.peek(TokenType.DEF):
@@ -86,7 +88,9 @@ class Parser:
                         self.peek(TokenType.LPAREN) or
                         self.peek(TokenType.PLUS) or
                         self.peek(TokenType.MINUS) or
-                        self.peek(TokenType.NOT)):
+                        self.peek(TokenType.NOT) or
+                        self.peek(TokenType.PRINT)):  # ДОБАВЛЕНО
+                    print(f"DEBUG PARSER: Parsing ExpressionStatement")  # ДОБАВЛЕНО
                     statements.append(ExpressionStatement(
                         self.parse_expression(),
                         self.current_token.line,
@@ -531,8 +535,8 @@ class Parser:
         token = self.current_token
 
         if (self.peek(TokenType.VARIABLE) or
-            self.peek(TokenType.PRINT) or  # ДОБАВЛЕНО: поддержка print как идентификатора
-            self.peek(TokenType.STR)):
+                self.peek(TokenType.PRINT) or  # ДОБАВЛЕНО: поддержка print как идентификатора
+                self.peek(TokenType.STR)):
             self.next_token()
 
             # Проверяем, является ли это вызовом функции
@@ -551,6 +555,8 @@ class Parser:
 
         elif self.peek(TokenType.STRING) or self.peek(TokenType.CHAR):
             self.next_token()
+            # ВАЖНО: Проверяем, является ли это началом вызова функции (например, print)
+            # Но строка сама по себе не может быть функцией, это просто литерал
             return Literal(token.value, DataType.STRING, token.line, token.column)
 
         elif self.peek(TokenType.TRUE):
@@ -569,6 +575,8 @@ class Parser:
             self.next_token()  # пропускаем '('
             node = self.parse_expression()
             self.expect(TokenType.RPAREN, "Ожидалась ')'")
+            # УСТАНАВЛИВАЕМ ФЛАГ СКОБОК!
+            node.parentheses = True
             return node
 
         elif self.peek(TokenType.LBRACKET):
@@ -587,15 +595,22 @@ class Parser:
 
     def parse_argument_list(self) -> List[Node]:
         """Разбор списка аргументов"""
+        print(f"DEBUG PARSER: parse_argument_list start, current token: {self.current_token}")  # ДЛЯ ОТЛАДКИ
+
         arguments = []
 
         if not self.peek(TokenType.RPAREN):
+            print(f"DEBUG PARSER: Not RPAREN, parsing first argument")  # ДЛЯ ОТЛАДКИ
             arguments.append(self.parse_expression())
+            print(f"DEBUG PARSER: After first arg, current token: {self.current_token}")  # ДЛЯ ОТЛАДКИ
 
             while self.peek(TokenType.COMMA):
+                print(f"DEBUG PARSER: Found COMMA, parsing next argument")  # ДЛЯ ОТЛАДКИ
                 self.next_token()  # пропускаем запятую
                 arguments.append(self.parse_expression())
+                print(f"DEBUG PARSER: After arg, current token: {self.current_token}")  # ДЛЯ ОТЛАДКИ
 
+        print(f"DEBUG PARSER: parse_argument_list done, returning {len(arguments)} args")  # ДЛЯ ОТЛАДКИ
         return arguments
 
     def parse_list_literal(self) -> Literal:
