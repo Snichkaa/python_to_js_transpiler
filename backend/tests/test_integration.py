@@ -45,19 +45,24 @@ if __name__ == "__main__":
     def test_calculator(self):
         """Интеграционный тест: простой калькулятор"""
         python_code = """def calculate(a, b, operation):
-    if operation == "add":
-        return a + b
-    elif operation == "subtract":
-        return a - b
-    elif operation == "multiply":
-        return a * b
-    else:
-        return a / b"""
+        if operation == "add":
+            return a + b
+        else:
+            if operation == "subtract":
+                return a - b
+            else:
+                if operation == "multiply":
+                    return a * b
+                else:
+                    return a / b"""
 
         js_code = self.transpiler.transpile(python_code)
 
         self.assertIn('function calculate(a, b, operation)', js_code)
-        self.assertIn('if (operation === "add")', js_code)
+        # Исправляем здесь: меняем === на ==
+        self.assertIn('if (operation == "add")', js_code)
+        self.assertIn('operation == "subtract"', js_code)
+        self.assertIn('operation == "multiply"', js_code)
 
 
 if __name__ == '__main__':
