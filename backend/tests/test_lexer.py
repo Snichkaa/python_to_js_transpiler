@@ -248,16 +248,16 @@ z = 15"""
 
     def test_error_cases(self):
         """Тест обработки ошибок"""
-        # Тест недопустимого символа - теперь ожидаем LexerError вместо InvalidCharacterError
+        # Тест недопустимого символа
         with self.assertRaises(LexerError) as cm:
             code = "x = @ 5"
             lexer = Lexer(code)
-            tokens = lexer.tokenize()
+            tokens = lexer.tokenize()  # <-- ошибка произойдет здесь
 
         print(f"\nТест ошибок: LexerError поймана как и ожидалось: {cm.exception}")
         self.assertIn("Invalid character", str(cm.exception))
 
-        # Тест незакрытой строки - теперь ожидаем LexerError вместо UnclosedStringError
+        # Тест незакрытой строки
         with self.assertRaises(LexerError) as cm:
             code = 'x = "unclosed string'
             lexer = Lexer(code)
@@ -266,7 +266,7 @@ z = 15"""
         print(f"Тест ошибок: LexerError поймана как и ожидалось: {cm.exception}")
         self.assertIn("Unclosed", str(cm.exception))
 
-        # Тест некорректного числа - теперь ожидаем LexerError вместо InvalidNumberError
+        # Тест некорректного числа
         with self.assertRaises(LexerError) as cm:
             code = "x = 123.45.67"
             lexer = Lexer(code)

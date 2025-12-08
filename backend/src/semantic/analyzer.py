@@ -122,7 +122,12 @@ class SemanticAnalyzer:
 
         # Для арифметических операций разрешаем числовые типы
         if node.operator in ['+', '-', '*', '/', '%', '**']:
-            if self.is_numeric_type(left_type) and self.is_numeric_type(right_type):
+            # ИСПРАВЛЕНО: Числовые литералы имеют тип INT или FLOAT, а не VARIABLE
+            # Проверяем, являются ли типы числовыми или литералами
+            def is_numeric_or_literal(data_type):
+                return data_type in [DataType.INT, DataType.FLOAT, DataType.ANY]
+
+            if is_numeric_or_literal(left_type) and is_numeric_or_literal(right_type):
                 return self.get_numeric_result_type(left_type, right_type)
             elif node.operator == '+' and left_type == DataType.STRING and right_type == DataType.STRING:
                 return DataType.STRING
@@ -134,7 +139,7 @@ class SemanticAnalyzer:
                 ))
                 return DataType.ANY
 
-        # Для операций сравнения результат всегда boolean
+        # Остальная логика без изменений...
         elif node.operator in ['==', '!=', '<', '>', '<=', '>=']:
             if self.are_types_comparable(left_type, right_type):
                 return DataType.BOOLEAN
@@ -158,6 +163,11 @@ class SemanticAnalyzer:
                 return DataType.ANY
 
         return DataType.ANY
+
+    def is_numeric_type(self, data_type):
+        """Проверяет, является ли тип числовым"""
+        # ИСПРАВЛЕНО: Включаем литеральные числовые типы
+        return data_type in [DataType.INT, DataType.FLOAT, DataType.ANY]
 
     def visit_identifier(self, node):
         """Посещение идентификатора"""

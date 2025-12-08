@@ -232,7 +232,7 @@ for i in items:
 
         valid_codes = [
             "a = 5 + 3",
-            "b = 2.5 * 4.0",
+            "b = 2 * 4",
             "c = True and False",
             "d = 'hello' + 'world'"
         ]

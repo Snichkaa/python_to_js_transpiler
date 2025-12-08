@@ -535,8 +535,11 @@ class Parser:
         token = self.current_token
 
         if (self.peek(TokenType.VARIABLE) or
-                self.peek(TokenType.PRINT) or  # ДОБАВЛЕНО: поддержка print как идентификатора
-                self.peek(TokenType.STR)):
+                self.peek(TokenType.PRINT) or
+                self.peek(TokenType.STR) or
+                self.peek(TokenType.INT) or
+                self.peek(TokenType.FLOAT) or
+                self.peek(TokenType.LIST)):
             self.next_token()
 
             # Проверяем, является ли это вызовом функции
@@ -555,9 +558,12 @@ class Parser:
 
         elif self.peek(TokenType.STRING) or self.peek(TokenType.CHAR):
             self.next_token()
-            # ВАЖНО: Проверяем, является ли это началом вызова функции (например, print)
-            # Но строка сама по себе не может быть функцией, это просто литерал
-            return Literal(token.value, DataType.STRING, token.line, token.column)
+
+            # Проверяем, является ли это f-строкой (содержит {})
+            if self._is_fstring(token.value):
+                return self.parse_fstring(token)
+            else:
+                return Literal(token.value, DataType.STRING, token.line, token.column)
 
         elif self.peek(TokenType.TRUE):
             self.next_token()
@@ -575,8 +581,6 @@ class Parser:
             self.next_token()  # пропускаем '('
             node = self.parse_expression()
             self.expect(TokenType.RPAREN, "Ожидалась ')'")
-            # УСТАНАВЛИВАЕМ ФЛАГ СКОБОК!
-            node.parentheses = True
             return node
 
         elif self.peek(TokenType.LBRACKET):
@@ -639,6 +643,86 @@ class Parser:
 
         return Literal(literal_values, DataType.LIST, token.line, token.column)
 
+    def parse_fstring(self, token):
+        """Парсим f-строку на части"""
+        # f-строка преобразуется в конкатенацию
+        # Пример: f"Hello {name}" -> "Hello " + name
+
+        parts = self._split_fstring(token.value)
+
+        if len(parts) == 1:
+            # Если нет вставок, это обычная строка
+            return Literal(token.value, DataType.STRING, token.line, token.column)
+
+        # Строим дерево конкатенаций
+        result = None
+        for i, part in enumerate(parts):
+            if i % 2 == 0:
+                # Текстовая часть
+                node = Literal(part, DataType.STRING, token.line, token.column)
+            else:
+                # Выражение внутри {}
+                # Нужно распарсить выражение как код Python
+                node = self._parse_fstring_expression(part, token.line, token.column)
+
+            if result is None:
+                result = node
+            else:
+                # Конкатенация
+                result = BinaryOperation(
+                    result, '+', node,
+                    token.line, token.column
+                )
+
+        return result
+
+    def _split_fstring(self, fstring: str):
+        """Разделяем f-строку на части: текст и выражения"""
+        parts = []
+        i = 0
+
+        while i < len(fstring):
+            if fstring[i] == '{':
+                # Находим закрывающую }
+                j = i + 1
+                brace_count = 1
+                while j < len(fstring) and brace_count > 0:
+                    if fstring[j] == '{':
+                        brace_count += 1
+                    elif fstring[j] == '}':
+                        brace_count -= 1
+                    j += 1
+
+                # Выражение внутри {}
+                expr = fstring[i + 1:j - 1]  # без внешних {}
+                parts.append(expr)
+                i = j
+            else:
+                # Текстовая часть
+                j = i
+                while j < len(fstring) and fstring[j] != '{':
+                    j += 1
+
+                text = fstring[i:j]
+                parts.append(text)
+                i = j
+
+        return parts
+
+    def _parse_fstring_expression(self, expr: str, line: int, column: int):
+        """Парсим выражение внутри f-строки"""
+        # Создаем временный лексер для выражения
+        from ..lexer.lexer import Lexer
+        temp_lexer = Lexer(expr)
+        temp_parser = Parser(temp_lexer)
+
+        try:
+            # Пытаемся распарсить как выражение
+            return temp_parser.parse_expression()
+        except:
+            # Если не получается, возвращаем как строку
+            return Literal(expr, DataType.STRING, line, column)
+
     def _peek_assign(self) -> bool:
         """Проверяем, является ли следующий токен оператором присваивания"""
         # Временно сохраняем текущее состояние
@@ -665,3 +749,9 @@ class Parser:
             TokenType.DIV_ASSIGN,
             TokenType.MOD_ASSIGN
         ]
+
+    def _is_fstring(self, value: str) -> bool:
+        """Проверяем, является ли строка f-строкой"""
+        # Простая проверка: если есть фигурные скобки, считаем f-строкой
+        # В реальном парсере нужно учитывать экранирование
+        return '{' in value and '}' in value

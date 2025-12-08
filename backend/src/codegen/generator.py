@@ -125,6 +125,12 @@ class CodeGenerator:
         left = self.visit(node.left)
         right = self.visit(node.right)
 
+        # Если это конкатенация строк, и одна из них f-строка
+        if node.operator == '+':
+            # Проверяем, не является ли это результатом разбора f-строки
+            # Если да, можем объединить в одну шаблонную строку
+            pass
+
         operator_map = {
             'and': '&&',
             'or': '||',
@@ -205,11 +211,13 @@ class CodeGenerator:
         elif node.value is False:
             return "false"
         elif isinstance(node.value, str):
-            # Экранируем кавычки в строках
-            escaped_value = node.value.replace('"', '\\"')
-            return f'"{escaped_value}"'
+            # Проверяем, является ли это f-строкой
+            if self._is_fstring(node.value):
+                return self.generate_fstring(node.value)
+            else:
+                escaped_value = node.value.replace('"', '\\"')
+                return f'"{escaped_value}"'
         elif isinstance(node.value, list):
-            # Обработка списков
             elements = []
             for elem in node.value:
                 if isinstance(elem, (int, float, str, bool)) or elem is None:
@@ -219,6 +227,48 @@ class CodeGenerator:
             return f"[{', '.join(elements)}]"
         else:
             return str(node.value)
+
+    def _is_fstring(self, value: str) -> bool:
+        """Проверяем, содержит ли строка {}"""
+        return '{' in value and '}' in value
+
+    def generate_fstring(self, fstring: str) -> str:
+        """Генерируем шаблонную строку JavaScript из f-строки Python"""
+        # Преобразуем f"Hello {name}" в `Hello ${name}`
+        # Обрабатываем экранирование
+        result = []
+        i = 0
+
+        while i < len(fstring):
+            if fstring[i] == '{':
+                # Находим закрывающую }
+                j = i + 1
+                brace_count = 1
+                while j < len(fstring) and brace_count > 0:
+                    if fstring[j] == '{':
+                        brace_count += 1
+                    elif fstring[j] == '}':
+                        brace_count -= 1
+                    j += 1
+
+                # Выражение внутри {}
+                expr = fstring[i + 1:j - 1]  # без внешних {}
+                result.append(f"${{{expr}}}")
+                i = j
+            else:
+                # Текстовая часть
+                j = i
+                while j < len(fstring) and fstring[j] != '{':
+                    j += 1
+
+                text = fstring[i:j]
+                # Экранируем обратные кавычки и доллары
+                text = text.replace('`', '\\`').replace('$', '\\$')
+                result.append(text)
+                i = j
+
+        # Собираем шаблонную строку
+        return f"`{''.join(result)}`"
 
     def visit_functiondeclaration(self, node: FunctionDeclaration):
         """Обработка объявления функции"""

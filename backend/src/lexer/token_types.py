@@ -85,6 +85,9 @@ class TokenType(Enum):
     INDENT = "INDENT"
     DEDENT = "DEDENT"
 
+    FSTRING_PREFIX = "FSTRING_PREFIX"  # токен 'f' перед строкой
+    FSTRING = "FSTRING"  # f-строка целиком
+
 
 # Словари
 KEYWORDS = {

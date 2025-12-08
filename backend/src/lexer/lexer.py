@@ -14,9 +14,6 @@ class Lexer:
 
     def error(self, message, char=None):
         """Создаем исключение лексической ошибки"""
-        if char is None and self.current_char is not None:
-            char = self.current_char
-        # Убираем лишний аргумент char
         raise LexerError(message, self.line, self.column)
 
     def advance(self):
@@ -100,38 +97,73 @@ class Lexer:
         start_line = self.line
         start_column = self.column
         result = ''
-        has_dot = False
 
-        while self.current_char is not None and (self.current_char.isdigit() or self.current_char == '.'):
-            if self.current_char == '.':
-                if has_dot:
-                    #Ошибка - лишняя точка в числе
-                    raise InvalidNumberError(result + '.', start_line, start_column)
-                has_dot = True
+        # Считываем целую часть
+        while self.current_char is not None and self.current_char.isdigit():
             result += self.current_char
             self.advance()
 
-        #Проверяем, что после числа нет букв
-        if self.current_char is not None and self.current_char.isalpha():
-            raise InvalidNumberError(result + self.current_char, start_line, start_column)
+        # Проверяем десятичную часть
+        if self.current_char == '.':
+            # Сохраняем точку
+            result += self.current_char
+            self.advance()
 
-        if has_dot:
-            #Проверяем, что вещественное число корректно
-            if result == '.' or result.endswith('.'):
-                raise InvalidNumberError(result, start_line, start_column)
+            # ДОБАВЛЕНО: Проверяем, что после точки идет цифра
+            if self.current_char is not None and self.current_char.isdigit():
+                # Считываем дробную часть
+                while self.current_char is not None and self.current_char.isdigit():
+                    result += self.current_char
+                    self.advance()
+            else:
+                # Если после точки нет цифры, это не число с плавающей точкой
+                # Возвращаем целое число и оставляем точку для следующего токена
+                # Удаляем точку из результата
+                result = result[:-1]
+                # Откатываем позицию на точку
+                self.position -= 1
+                self.column -= 1
+                self.current_char = '.'
+                return Token(TokenType.INTEGER, result, start_line, start_column)
+
+            # УСИЛЕННАЯ ПРОВЕРКА: НЕ ДОПУСКАЕМ ВТОРОЙ ТОЧКИ
+            if self.current_char == '.':
+                raise InvalidNumberError(result + self.current_char, start_line, start_column)
+
+            # Проверяем, что после числа нет букв или подчеркиваний
+            if self.current_char is not None and (self.current_char.isalpha() or self.current_char == '_'):
+                raise InvalidNumberError(result + self.current_char, start_line, start_column)
+
             return Token(TokenType.FLOAT_NUMBER, result, start_line, start_column)
+
+        # Целое число
         else:
+            # Проверяем, что после числа нет букв или подчеркиваний
+            if self.current_char is not None and (self.current_char.isalpha() or self.current_char == '_'):
+                raise InvalidNumberError(result + self.current_char, start_line, start_column)
+
             return Token(TokenType.INTEGER, result, start_line, start_column)
 
     def read_string(self, quote_char):
-        """Читаем строковый или символьный литерал"""
+        """Читаем строковый или символьный литерал, включая f-строки"""
         start_line = self.line
         start_column = self.column
         result = ''
+
+        # Проверяем, была ли перед кавычкой буква 'f'
+        is_fstring = False
+        if self.position > 0 and self.source_code[self.position - 1] == 'f':
+            is_fstring = True
+
         self.advance()  # пропускаем открывающую кавычку
 
+        # Особый режим для f-строк
+        if is_fstring:
+            return self.read_fstring(quote_char, start_line, start_column)
+
+        # Обычная строка (остальная логика без изменений)
         while self.current_char is not None and self.current_char != quote_char:
-            #Обрабатываем escape-последовательностей
+            # Обрабатываем escape-последовательности
             if self.current_char == '\\':
                 self.advance()
                 if self.current_char == 'n':
@@ -149,7 +181,6 @@ class Lexer:
             self.advance()
 
         if self.current_char != quote_char:
-            #Ошибка - незакрытая строка
             if quote_char == "'":
                 raise UnclosedStringError(start_line, start_column, "single")
             else:
@@ -157,11 +188,60 @@ class Lexer:
 
         self.advance()  # пропускаем закрывающую кавычку
 
-        #Определяем тип токена: CHAR или STRING
+        # Определяем тип токена: CHAR или STRING
         if quote_char == "'" and len(result) == 1:
             return Token(TokenType.CHAR, result, start_line, start_column)
         else:
             return Token(TokenType.STRING, result, start_line, start_column)
+
+    def read_fstring(self, quote_char, start_line, start_column):
+        """Читаем f-строку с обработкой выражений внутри {}"""
+        result = ''
+
+        while self.current_char is not None and self.current_char != quote_char:
+            if self.current_char == '{':
+                # Начинаем выражение внутри f-строки
+                result += self.current_char
+                self.advance()
+
+                # Читаем выражение до закрывающей }
+                brace_count = 1
+                while self.current_char is not None and brace_count > 0:
+                    if self.current_char == '{':
+                        brace_count += 1
+                    elif self.current_char == '}':
+                        brace_count -= 1
+
+                    result += self.current_char
+                    self.advance()
+            elif self.current_char == '\\':
+                # Escape-последовательности
+                self.advance()
+                if self.current_char == 'n':
+                    result += '\n'
+                elif self.current_char == 't':
+                    result += '\t'
+                elif self.current_char == '\\':
+                    result += '\\'
+                elif self.current_char == quote_char:
+                    result += quote_char
+                elif self.current_char == '{':
+                    result += '{'
+                elif self.current_char == '}':
+                    result += '}'
+                else:
+                    result += '\\' + self.current_char
+                self.advance()
+            else:
+                result += self.current_char
+                self.advance()
+
+        if self.current_char != quote_char:
+            raise UnclosedStringError(start_line, start_column, "double")
+
+        self.advance()  # пропускаем закрывающую кавычку
+
+        return Token(TokenType.STRING, result, start_line, start_column)  # Или FSTRING, если хотите отдельный тип
 
     def read_identifier(self):
         """Читаем идентификатор или ключевое слово"""
@@ -245,13 +325,22 @@ class Lexer:
 
         # Теперь обрабатываем значимые токены
 
-        # Числа
-        if self.current_char.isdigit():
+        # ЧИСЛА - ДОЛЖНО БЫТЬ ПЕРВЫМ!
+        if self.current_char and self.current_char.isdigit():
+            return self.read_number()
+
+        # Числа, начинающиеся с точки (например .5)
+        if self.current_char == '.' and self.peek() and self.peek().isdigit():
             return self.read_number()
 
         # Строки
         if self.current_char in ('"', "'"):
             return self.read_string(self.current_char)
+
+        if self.current_char == 'f' and self.peek() in ('"', "'"):
+            # Это f-строка
+            self.advance()  # пропускаем 'f'
+            return self.read_string(self.current_char)  # current_char теперь кавычка
 
         # Идентификаторы
         if self.current_char.isalpha() or self.current_char == '_':
@@ -271,14 +360,19 @@ class Lexer:
             return Token(DELIMITERS[delim], delim, line, col)
 
         # Неизвестный символ
-        self.error(f"Invalid character '{self.current_char}'")
+        raise InvalidCharacterError(self.current_char, self.line, self.column)
 
     def tokenize(self):
         """Генерируем все токены из исходного кода"""
         tokens = []
         while True:
-            token = self.get_next_token()
-            tokens.append(token)
-            if token.type == TokenType.EOF:
-                break
+            try:
+                token = self.get_next_token()
+                tokens.append(token)
+                if token.type == TokenType.EOF:
+                    break
+            except Exception as e:
+                # Если произошла ошибка, добавляем её в список токенов?
+                # Или просто прокидываем дальше?
+                raise  # Перебрасываем исключение
         return tokens
