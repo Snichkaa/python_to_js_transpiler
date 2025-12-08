@@ -27,6 +27,21 @@ class CodeGenerator:
         # Обрабатываем программу
         self.visit_program(node)
 
+        # ДОБАВЛЕНО: Автоматически добавляем вызов main() если он есть
+        # Проверяем, есть ли функция main в программе
+        has_main_function = False
+        if isinstance(node, Program):
+            for stmt in node.statements:
+                if isinstance(stmt, FunctionDeclaration) and stmt.name == "main":
+                    has_main_function = True
+                    break
+
+        # Если есть функция main, вызываем её
+        if has_main_function:
+            self.add_line()
+            self.add_line("// Автоматический вызов main()")
+            self.add_line("main();")
+
         return '\n'.join(self.output)
 
     def indent(self):
@@ -253,6 +268,9 @@ class CodeGenerator:
 
                 # Выражение внутри {}
                 expr = fstring[i + 1:j - 1]  # без внешних {}
+
+                # ОБНОВЛЕНО: Удаляем f-префикс и оставляем только выражение
+                # Например, "add(x, y)" оставляем как add(x, y)
                 result.append(f"${{{expr}}}")
                 i = j
             else:
@@ -293,34 +311,50 @@ class CodeGenerator:
     def visit_ifstatement(self, node: IfStatement):
         """Обработка условного оператора"""
         condition = self.visit(node.condition)
-        # Убираем внешние скобки, так как они уже есть в условии if
-        condition_clean = condition[1:-1] if condition.startswith('(') and condition.endswith(')') else condition
 
-        self.add_line(f"if ({condition_clean}) {{")
-        self.indent()
-        self.visit(node.then_branch)
-        self.dedent()
+        # Проверяем, является ли это условием __name__ == "__main__"
+        is_name_main_check = False
+        if isinstance(node.condition, BinaryOperation):
+            left = self.visit(node.condition.left)
+            right = self.visit(node.condition.right)
+            # Проверяем, является ли это __name__ == "__main__"
+            if left == '__name__' and right == '"__main__"':
+                is_name_main_check = True
 
-        # Обработка else/elif
-        if node.else_branch:
-            if isinstance(node.else_branch, IfStatement):
-                # Это elif
-                self.add_line(f"}} else ", end="")
-                else_code = self.visit(node.else_branch)
-                # Убираем начальный if из кода
-                if else_code.startswith("if "):
-                    self.output[-1] += else_code
-                else:
-                    self.add_line(else_code)
-            else:
-                # Это else
-                self.add_line("} else {")
-                self.indent()
-                self.visit(node.else_branch)
-                self.dedent()
-                self.add_line("}")
+        # Если это проверка __name__ == "__main__", обрабатываем по-особому
+        if is_name_main_check:
+            # Для JavaScript не генерируем if (__name__ == "__main__")
+            # Вместо этого выполняем тело блока сразу
+            self.visit(node.then_branch)
         else:
-            self.add_line("}")
+            # Обычная обработка if
+            condition_clean = condition[1:-1] if condition.startswith('(') and condition.endswith(')') else condition
+
+            self.add_line(f"if ({condition_clean}) {{")
+            self.indent()
+            self.visit(node.then_branch)
+            self.dedent()
+
+            # Обработка else/elif
+            if node.else_branch:
+                if isinstance(node.else_branch, IfStatement):
+                    # Это elif
+                    self.add_line(f"}} else ", end="")
+                    else_code = self.visit(node.else_branch)
+                    # Убираем начальный if из кода
+                    if else_code.startswith("if "):
+                        self.output[-1] += else_code
+                    else:
+                        self.add_line(else_code)
+                else:
+                    # Это else
+                    self.add_line("} else {")
+                    self.indent()
+                    self.visit(node.else_branch)
+                    self.dedent()
+                    self.add_line("}")
+            else:
+                self.add_line("}")
 
     def visit_whileloop(self, node: WhileLoop):
         """Обработка цикла while"""

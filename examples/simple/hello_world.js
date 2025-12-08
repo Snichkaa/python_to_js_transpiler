@@ -2,7 +2,9 @@
 
 function main() {
     console.log("Hello, World!");
-    if (__name__ == "__main__") {
-        main();
-    }
+    main();
 }
+
+
+// Автоматический вызов main()
+main();

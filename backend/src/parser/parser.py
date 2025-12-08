@@ -160,15 +160,15 @@ class Parser:
             # Парсим все операторы до DEDENT или ключевых слов, завершающих блок
             while (not self.peek(TokenType.DEDENT) and
                    not self.peek(TokenType.EOF) and
-                   not self.peek(TokenType.ELSE) and  # ВАЖНО: не продолжаем если встретили else
-                   not self.peek(TokenType.ELIF)):
+                   not self.peek(TokenType.ELSE) and
+                   not self.peek(TokenType.ELIF)):  # ДОБАВЛЕНО: elif тоже завершает блок
 
                 # Пропускаем пустые строки
                 self.skip_newlines()
                 if (self.peek(TokenType.DEDENT) or
                         self.peek(TokenType.EOF) or
                         self.peek(TokenType.ELSE) or
-                        self.peek(TokenType.ELIF)):
+                        self.peek(TokenType.ELIF)):  # ДОБАВЛЕНО
                     break
 
                 # Парсим оператор
@@ -646,8 +646,6 @@ class Parser:
     def parse_fstring(self, token):
         """Парсим f-строку на части"""
         # f-строка преобразуется в конкатенацию
-        # Пример: f"Hello {name}" -> "Hello " + name
-
         parts = self._split_fstring(token.value)
 
         if len(parts) == 1:
@@ -659,10 +657,13 @@ class Parser:
         for i, part in enumerate(parts):
             if i % 2 == 0:
                 # Текстовая часть
-                node = Literal(part, DataType.STRING, token.line, token.column)
+                if part:  # Не добавляем пустые строки
+                    node = Literal(part, DataType.STRING, token.line, token.column)
+                else:
+                    continue
             else:
                 # Выражение внутри {}
-                # Нужно распарсить выражение как код Python
+                # Пытаемся распарсить выражение
                 node = self._parse_fstring_expression(part, token.line, token.column)
 
             if result is None:
