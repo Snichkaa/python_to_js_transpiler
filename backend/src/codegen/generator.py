@@ -281,3 +281,4 @@ class CodeGenerator:
         else:
             self.add_line(f"let {node.name};")
         self.declared_variables.add(node.name)
+ #Чисто для проверки
