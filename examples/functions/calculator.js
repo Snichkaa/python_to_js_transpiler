@@ -23,5 +23,7 @@ function add(a, b) {
     console.log("x" + " - " + "y" + " = " + "subtract(x, y)");
     console.log("x" + " * " + "y" + " = " + "multiply(x, y)");
     console.log("x" + " / " + "y" + " = " + "divide(x, y)");
-    main();
 }
+
+
+main();

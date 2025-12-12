@@ -11,7 +11,9 @@ function fibonacci(n) {
     }
     for (let i of range(10)) {
         console.log("fib(" + i + ") = " + fibonacci(i));
-        null;
         main();
     }
 }
+
+
+main();
