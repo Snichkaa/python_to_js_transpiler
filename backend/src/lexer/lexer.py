@@ -291,6 +291,17 @@ class Lexer:
 
         # Бесконечный цикл для пропуска пустого содержимого
         while True:
+            # FIX: DEDENT может понадобиться даже если новая строка начинается сразу с
+            # значимого токена (без пробелов). Типичный случай: между блоками есть
+            # пустые строки, а следующая строка начинается с `def`/`if`/идентификатора.
+            # Ранее DEDENT генерировался только через handle_indentation() (когда строка
+            # начиналась с пробелов), из-за чего функции "склеивались" (вторая def
+            # оказывалась внутри первой).
+            if self.column == 1 and self.current_char not in (None, ' ', '\t', '\n', '#'):
+                if len(self.indent_stack) > 1 and self.indent_stack[-1] > 0:
+                    self.indent_stack.pop()
+                    return Token(TokenType.DEDENT, '', self.line, self.column)
+
             # Обрабатываем отступы в начале строки
             if self.column == 1 and self.current_char in (' ', '\t'):
                 indent_token = self.handle_indentation()

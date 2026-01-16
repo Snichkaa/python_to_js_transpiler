@@ -26,6 +26,19 @@ class CodeGenerator:
         self.add_line('"use strict";')
         self.add_line()
 
+        # Вспомогательные функции рантайма для Python-подмножества (range, str, ...)
+        needs_range, needs_str = self._scan_runtime_needs(node)
+        if needs_range:
+            self._emit_range_helper()
+            self.add_line()
+        if needs_str:
+            self.add_line('function str(value) {')
+            self.indent()
+            self.add_line('return String(value);')
+            self.dedent()
+            self.add_line('}')
+            self.add_line()
+
         # Обрабатываем программу
         self.visit_program(node)
 
@@ -36,6 +49,68 @@ class CodeGenerator:
 
 
         return '\n'.join(self.output)
+
+    def _scan_runtime_needs(self, node: Node):
+        """Проходит по AST и определяет, нужны ли рантайм-хелперы."""
+        needs_range = False
+        needs_str = False
+
+        def walk(n: Node):
+            nonlocal needs_range, needs_str
+            if n is None:
+                return
+            # FunctionCall name хранится как Identifier
+            if isinstance(n, FunctionCall):
+                name = self.visit(n.name)
+                if name == 'range':
+                    needs_range = True
+                elif name == 'str':
+                    needs_str = True
+            # Рекурсивно обходим все поля узла
+            for v in getattr(n, '__dict__', {}).values():
+                if isinstance(v, list):
+                    for item in v:
+                        if isinstance(item, Node):
+                            walk(item)
+                elif isinstance(v, Node):
+                    walk(v)
+
+        walk(node)
+        return needs_range, needs_str
+
+    def _emit_range_helper(self):
+        """Эмуляция Python range(...) в JS как массива чисел."""
+        self.add_line('function range() {')
+        self.indent()
+        self.add_line('const args = Array.from(arguments);')
+        self.add_line('let start = 0, stop = 0, step = 1;')
+        self.add_line('if (args.length === 1) {')
+        self.indent()
+        self.add_line('stop = args[0];')
+        self.dedent()
+        self.add_line('} else if (args.length === 2) {')
+        self.indent()
+        self.add_line('start = args[0]; stop = args[1];')
+        self.dedent()
+        self.add_line('} else if (args.length >= 3) {')
+        self.indent()
+        self.add_line('start = args[0]; stop = args[1]; step = args[2];')
+        self.dedent()
+        self.add_line('}')
+        self.add_line('if (step === 0) { throw new Error("range() step argument must not be zero"); }')
+        self.add_line('const out = [];')
+        self.add_line('if (step > 0) {')
+        self.indent()
+        self.add_line('for (let i = start; i < stop; i += step) out.push(i);')
+        self.dedent()
+        self.add_line('} else {')
+        self.indent()
+        self.add_line('for (let i = start; i > stop; i += step) out.push(i);')
+        self.dedent()
+        self.add_line('}')
+        self.add_line('return out;')
+        self.dedent()
+        self.add_line('}')
 
     def indent(self):
         self.indent_level += 1
@@ -239,15 +314,8 @@ class CodeGenerator:
     def visit_forloop(self, node: ForLoop):
         variable = node.variable.name
         self.declared_variables.add(variable)
-        if isinstance(node.iterable, FunctionCall) and node.iterable.name == "range":
-            args = [self.visit(arg) for arg in node.iterable.arguments]
-            if len(args) == 1: start, end, step = '0', args[0], '1'
-            elif len(args) == 2: start, end, step = args[0], args[1], '1'
-            else: start, end, step = args[0], args[1], args[2]
-            self.add_line(f"for (let {variable} = {start}; {variable} < {end}; {variable} += {step}) {{")
-        else:
-            iter_code = self.visit(node.iterable)
-            self.add_line(f"for (let {variable} of {iter_code}) {{")
+        iter_code = self.visit(node.iterable)
+        self.add_line(f"for (let {variable} of {iter_code}) {{")
         self.indent()
         self.visit(node.body)
         self.dedent()
@@ -256,7 +324,9 @@ class CodeGenerator:
     def visit_functioncall(self, node: FunctionCall):
         name = self.visit(node.name)
         args = ', '.join([self.visit(a) for a in node.arguments])
-        if name == "print": return f"console.log({args})"
+        # Встроенная функция print
+        if name == "print":
+            return f"console.log({args})"
         return f"{name}({args})"
 
     def visit_returnstatement(self, node: ReturnStatement):

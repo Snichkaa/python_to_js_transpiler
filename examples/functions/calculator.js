@@ -2,27 +2,27 @@
 
 function add(a, b) {
     return a + b;
-    null;
-    subtract(a, b);
-    null;
+}
+
+function subtract(a, b) {
     return a - b;
-    null;
-    multiply(a, b);
-    null;
+}
+
+function multiply(a, b) {
     return a * b;
-    null;
-    divide(a, b);
-    null;
+}
+
+function divide(a, b) {
     return a / b;
-    null;
-    main();
-    null;
+}
+
+function main() {
     let x = 10;
     let y = 5;
-    console.log("x" + " + " + "y" + " = " + "add(x, y)");
-    console.log("x" + " - " + "y" + " = " + "subtract(x, y)");
-    console.log("x" + " * " + "y" + " = " + "multiply(x, y)");
-    console.log("x" + " / " + "y" + " = " + "divide(x, y)");
+    console.log(`${x} + ${y} = ${add(x, y)}`);
+    console.log(`${x} - ${y} = ${subtract(x, y)}`);
+    console.log(`${x} * ${y} = ${multiply(x, y)}`);
+    console.log(`${x} / ${y} = ${divide(x, y)}`);
 }
 
 
